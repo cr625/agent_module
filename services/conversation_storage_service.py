@@ -48,39 +48,58 @@ class ConversationStorageService:
         # Ensure context values are not None
         conversation_data = conversation.to_db_dict()
         
-        if conversation.id is None:
-            # Insert new conversation
-            query = """
-                INSERT INTO conversations 
-                (title, context_id, context_type, context_name, created_at, updated_at, metadata)
-                VALUES (:title, :context_id, :context_type, :context_name, :created_at, :updated_at, :metadata)
-            """
-            self.db.execute_query(query, conversation_data)
+        # Ensure we have valid values for required fields
+        for field in ['context_id', 'context_type', 'context_name']:
+            if not conversation_data.get(field):
+                conversation_data[field] = 'default'
+        
+        try:
+            # Start a transaction
+            self.db.execute_query("BEGIN TRANSACTION")
             
-            # Get ID of newly inserted conversation
-            query = "SELECT last_insert_rowid() as id"
-            result = self.db.execute_query(query)
-            conversation.id = result[0]['id'] if result else None
-        else:
-            # Update existing conversation
-            query = """
-                UPDATE conversations
-                SET title = :title,
-                    context_id = :context_id,
-                    context_type = :context_type,
-                    context_name = :context_name,
-                    updated_at = :updated_at,
-                    metadata = :metadata
-                WHERE id = :id
-            """
-            params = {**conversation_data, 'id': conversation.id}
-            self.db.execute_query(query, params)
-        
-        # Save messages
-        for message in conversation.messages:
-            self._save_message(message, conversation.id)
-        
-        return conversation.id
+            if conversation.id is None:
+                # Insert new conversation
+                query = """
+                    INSERT INTO conversations 
+                    (title, context_id, context_type, context_name, created_at, updated_at, metadata)
+                    VALUES (:title, :context_id, :context_type, :context_name, :created_at, :updated_at, :metadata)
+                """
+                self.db.execute_query(query, conversation_data)
+                
+                # Get ID of newly inserted conversation
+                query = "SELECT last_insert_rowid() as id"
+                result = self.db.execute_query(query)
+                conversation.id = result[0]['id'] if result else None
+            else:
+                # Update existing conversation
+                query = """
+                    UPDATE conversations
+                    SET title = :title,
+                        context_id = :context_id,
+                        context_type = :context_type,
+                        context_name = :context_name,
+                        updated_at = :updated_at,
+                        metadata = :metadata
+                    WHERE id = :id
+                """
+                params = {**conversation_data, 'id': conversation.id}
+                self.db.execute_query(query, params)
+            
+            # Save messages
+            if conversation.id:
+                for message in conversation.messages:
+                    self._save_message(message, conversation.id)
+            
+            # Commit the transaction
+            self.db.execute_query("COMMIT")
+            
+            return conversation.id
+            
+        except Exception as e:
+            # Rollback on error
+            self.db.execute_query("ROLLBACK")
+            logger.error(f"Error saving conversation: {e}")
+            raise
     
     def _save_message(self, message: Message, conversation_id: int) -> int:
         """

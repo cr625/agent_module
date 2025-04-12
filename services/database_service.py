@@ -100,6 +100,9 @@ class DatabaseService:
             logger.error(f"Error connecting to database: {e}")
             raise
     
+    # Connection for transaction support
+    _transaction_connection = None
+    
     def execute_query(self, query: str, params: tuple = ()) -> List[Dict[str, Any]]:
         """
         Execute a query and return the results as a list of dictionaries.
@@ -111,7 +114,53 @@ class DatabaseService:
         Returns:
             List of dictionaries representing rows.
         """
-        conn = self.get_connection()
+        # Handle transaction control statements
+        if query.strip().upper() == "BEGIN TRANSACTION":
+            if self._transaction_connection is not None:
+                logger.warning("Transaction already in progress, ignoring BEGIN TRANSACTION")
+                return []
+                
+            self._transaction_connection = self.get_connection()
+            cursor = self._transaction_connection.cursor()
+            cursor.execute(query)
+            return []
+            
+        elif query.strip().upper() == "COMMIT":
+            if self._transaction_connection is None:
+                logger.warning("No transaction in progress, ignoring COMMIT")
+                return []
+                
+            try:
+                self._transaction_connection.commit()
+                return []
+            except sqlite3.Error as e:
+                logger.error(f"Error executing COMMIT: {e}")
+                raise
+            finally:
+                if self._transaction_connection:
+                    self._transaction_connection.close()
+                    self._transaction_connection = None
+                    
+        elif query.strip().upper() == "ROLLBACK":
+            if self._transaction_connection is None:
+                logger.warning("No transaction in progress, ignoring ROLLBACK")
+                return []
+                
+            try:
+                self._transaction_connection.rollback()
+                return []
+            except sqlite3.Error as e:
+                logger.error(f"Error executing ROLLBACK: {e}")
+                raise
+            finally:
+                if self._transaction_connection:
+                    self._transaction_connection.close()
+                    self._transaction_connection = None
+                
+        # Use transaction connection if in a transaction, or create a new one
+        conn = self._transaction_connection or self.get_connection()
+        conn_is_temporary = self._transaction_connection is None
+        
         try:
             cursor = conn.cursor()
             cursor.execute(query, params)
@@ -120,17 +169,27 @@ class DatabaseService:
             if query.strip().upper().startswith("SELECT"):
                 results = [dict(row) for row in cursor.fetchall()]
                 return results
+            
+            # For INSERT, UPDATE, DELETE operations, commit immediately if not in a transaction
+            if conn_is_temporary:
+                conn.commit()
                 
-            # For other queries, commit changes
-            conn.commit()
             return []
             
         except sqlite3.Error as e:
-            conn.rollback()
+            # Only rollback if not in a transaction
+            if conn_is_temporary:
+                try:
+                    conn.rollback()
+                except sqlite3.Error:
+                    pass
+                    
             logger.error(f"Error executing query: {e}")
             raise
         finally:
-            conn.close()
+            # Only close connection if it's temporary
+            if conn_is_temporary and conn:
+                conn.close()
     
     def execute_transaction(self, queries: List[Tuple[str, tuple]]) -> None:
         """

@@ -337,7 +337,32 @@ def create_history_blueprint(
                     'status': 'error',
                     'message': 'Invalid conversation format'
                 }), 400
+            
+            # Ensure required fields have valid values
+            conversation_data = data.get('conversation', {})
+            if not conversation_data.get('context_id'):
+                conversation_data['context_id'] = 'default'
+            if not conversation_data.get('context_type'):
+                conversation_data['context_type'] = 'world'  
+            if not conversation_data.get('context_name'):
+                conversation_data['context_name'] = 'Default Context'
                 
+            # Set a title if none is provided
+            if not conversation_data.get('title'):
+                # Find first user message to create a title
+                for message in data.get('messages', []):
+                    if message.get('role') == 'user' and message.get('content'):
+                        content = message.get('content', '')
+                        # Truncate to reasonable title length
+                        title = content if len(content) <= 50 else content[:47] + '...'
+                        conversation_data['title'] = title
+                        break
+                        
+                # If still no title
+                if not conversation_data.get('title'):
+                    conversation_data['title'] = f"Conversation {data.get('conversation_time', '')}"
+                
+            # Now import the conversation
             conversation_id = storage_service.import_conversation(data)
             
             if not conversation_id:
