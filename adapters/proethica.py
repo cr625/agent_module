@@ -428,8 +428,23 @@ class ProEthicaAdapter(LLMServiceAdapter):
             world_id=world_id
         )
         
-        # Convert to expected format
-        return [{"id": i, "text": option} for i, option in enumerate(options)]
+        # Convert to expected format - ensure we're not nesting the option objects
+        formatted_options = []
+        for i, option in enumerate(options):
+            # Check if the option already has the expected structure
+            if isinstance(option, dict) and 'text' in option:
+                formatted_options.append({
+                    "id": i,
+                    "text": option['text']
+                })
+            else:
+                # Use the option directly if it's a simple string
+                formatted_options.append({
+                    "id": i,
+                    "text": option
+                })
+                
+        return formatted_options
     
     def reset_conversation(self) -> None:
         """Reset the current conversation state."""
