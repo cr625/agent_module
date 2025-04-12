@@ -1,180 +1,189 @@
 """
-Conversation model classes for agent module.
+Conversation model for conversation storage.
 """
 
-import time
-from typing import Dict, List, Any, Optional
+import json
+from dataclasses import dataclass, field
+from typing import Dict, Any, List, Optional
+from datetime import datetime
 
+from app.agent_module.models.message import Message
 
-class Message:
+@dataclass
+class Conversation:
     """
-    Class representing a message in a conversation.
-    
-    This is based on the Message class in app.services.llm_service.
+    Represents a conversation with metadata and messages.
     """
+    id: Optional[int] = None
+    title: Optional[str] = None
+    context_id: Optional[str] = None
+    context_type: Optional[str] = None
+    context_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    messages: List[Message] = field(default_factory=list)
     
-    def __init__(self, content: str, role: str = "user", timestamp: Optional[float] = None):
-        """
-        Initialize a new message.
+    def __post_init__(self):
+        """Handle initialization with string metadata and timestamps."""
+        # Handle metadata
+        if isinstance(self.metadata, str):
+            try:
+                self.metadata = json.loads(self.metadata)
+            except (json.JSONDecodeError, TypeError):
+                self.metadata = {}
         
-        Args:
-            content: Message content
-            role: Message role (user or assistant)
-            timestamp: Message timestamp (defaults to current time)
-        """
-        self.content = content
-        self.role = role
-        self.timestamp = timestamp or time.time()
+        # Handle timestamps
+        if self.created_at is None:
+            self.created_at = datetime.now()
+        elif isinstance(self.created_at, str):
+            try:
+                self.created_at = datetime.fromisoformat(self.created_at.replace('Z', '+00:00'))
+            except (ValueError, TypeError):
+                self.created_at = datetime.now()
+                
+        if self.updated_at is None:
+            self.updated_at = self.created_at
+        elif isinstance(self.updated_at, str):
+            try:
+                self.updated_at = datetime.fromisoformat(self.updated_at.replace('Z', '+00:00'))
+            except (ValueError, TypeError):
+                self.updated_at = self.created_at or datetime.now()
     
     def to_dict(self) -> Dict[str, Any]:
         """
-        Convert message to dictionary.
+        Convert the conversation to a dictionary.
         
         Returns:
-            Dictionary representation of the message
+            Dictionary representation of the conversation.
         """
-        return {
-            "content": self.content,
-            "role": self.role,
-            "timestamp": self.timestamp
+        result = {
+            "metadata": self.metadata,
+            "messages": [msg.to_dict() for msg in self.messages]
         }
+        
+        # Add optional fields if they exist
+        if self.id is not None:
+            result["id"] = self.id
+            
+        if self.title is not None:
+            result["title"] = self.title
+            
+        if self.context_id is not None:
+            result["context_id"] = self.context_id
+            
+        if self.context_type is not None:
+            result["context_type"] = self.context_type
+            
+        if self.context_name is not None:
+            result["context_name"] = self.context_name
+            
+        if self.created_at is not None:
+            result["created_at"] = self.created_at.isoformat()
+            
+        if self.updated_at is not None:
+            result["updated_at"] = self.updated_at.isoformat()
+            
+        return result
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Message':
+    def from_dict(cls, data: Dict[str, Any]) -> 'Conversation':
         """
-        Create message from dictionary.
+        Create a conversation from a dictionary.
         
         Args:
-            data: Dictionary representation of the message
+            data: Dictionary representation of a conversation.
             
         Returns:
-            Message instance
+            New Conversation instance.
         """
-        return cls(
-            content=data["content"],
-            role=data.get("role", "user"),
-            timestamp=data.get("timestamp")
-        )
-
-
-class Conversation:
-    """
-    Class representing a conversation with an LLM.
-    
-    This is based on the Conversation class in app.services.llm_service.
-    """
-    
-    def __init__(self, messages: Optional[List[Message]] = None, metadata: Optional[Dict[str, Any]] = None):
-        """
-        Initialize a new conversation.
+        if data is None:
+            return cls()
+            
+        # Extract basic conversation metadata
+        conversation_id = data.get('id')
+        title = data.get('title')
+        context_id = data.get('context_id')
+        context_type = data.get('context_type')
+        context_name = data.get('context_name')
+        created_at = data.get('created_at')
+        updated_at = data.get('updated_at')
+        metadata = data.get('metadata', {})
         
-        Args:
-            messages: List of messages in the conversation
-            metadata: Metadata dictionary
-        """
-        self.messages = messages or []
-        self.metadata = metadata or {}
+        # Create the conversation without messages first
+        conversation = cls(
+            id=conversation_id,
+            title=title,
+            context_id=context_id,
+            context_type=context_type,
+            context_name=context_name,
+            created_at=created_at,
+            updated_at=updated_at,
+            metadata=metadata
+        )
+        
+        # Add messages if they exist
+        if 'messages' in data and isinstance(data['messages'], list):
+            for msg_data in data['messages']:
+                # Skip invalid message data
+                if not isinstance(msg_data, dict):
+                    continue
+                    
+                # Create message and ensure conversation_id is set
+                message = Message.from_dict(msg_data)
+                if conversation_id is not None:
+                    message.conversation_id = conversation_id
+                    
+                conversation.messages.append(message)
+        
+        return conversation
     
     def add_message(self, message: Message) -> None:
         """
         Add a message to the conversation.
         
         Args:
-            message: Message to add
+            message: Message to add.
         """
+        # Set the conversation ID on the message
+        if self.id is not None:
+            message.conversation_id = self.id
+            
+        # Add the message to the list
         self.messages.append(message)
-    
-    def add_user_message(self, content: str) -> Message:
-        """
-        Add a user message to the conversation.
         
-        Args:
-            content: Message content
-            
-        Returns:
-            Created message
-        """
-        message = Message(content=content, role="user")
-        self.add_message(message)
-        return message
+        # Update the updated_at timestamp
+        self.updated_at = datetime.now()
     
-    def add_assistant_message(self, content: str) -> Message:
+    def to_db_dict(self) -> Dict[str, Any]:
         """
-        Add an assistant message to the conversation.
-        
-        Args:
-            content: Message content
-            
-        Returns:
-            Created message
-        """
-        message = Message(content=content, role="assistant")
-        self.add_message(message)
-        return message
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert conversation to dictionary.
+        Convert to a dictionary suitable for database storage.
         
         Returns:
-            Dictionary representation of the conversation
+            Dictionary with fields prepared for database storage.
         """
         return {
-            "messages": [m.to_dict() for m in self.messages],
-            "metadata": self.metadata
+            "title": self.title or "Untitled Conversation",
+            "context_id": self.context_id or "",
+            "context_type": self.context_type or "",
+            "context_name": self.context_name or "",
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "metadata": json.dumps(self.metadata)
         }
     
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Conversation':
+    def generate_default_title(self) -> str:
         """
-        Create conversation from dictionary.
+        Generate a default title for the conversation based on context and time.
         
-        Args:
-            data: Dictionary representation of the conversation
-            
         Returns:
-            Conversation instance
+            A default title.
         """
-        if not data:
-            return cls()
+        time_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         
-        messages = [Message.from_dict(m) for m in data.get("messages", [])]
-        metadata = data.get("metadata", {})
-        
-        return cls(messages=messages, metadata=metadata)
-    
-    def get_history_as_text(self, include_last_n: Optional[int] = None) -> str:
-        """
-        Get conversation history as formatted text.
-        
-        Args:
-            include_last_n: Only include the last N messages
-            
-        Returns:
-            Formatted conversation history
-        """
-        messages = self.messages
-        if include_last_n is not None:
-            messages = messages[-include_last_n:]
-        
-        history = []
-        for message in messages:
-            prefix = "User: " if message.role == "user" else "Assistant: "
-            history.append(f"{prefix}{message.content}")
-        
-        return "\n\n".join(history)
-    
-    def get_latest_message(self, role: Optional[str] = None) -> Optional[Message]:
-        """
-        Get the latest message with the specified role.
-        
-        Args:
-            role: Message role filter (optional)
-            
-        Returns:
-            Latest message or None if no messages match
-        """
-        for message in reversed(self.messages):
-            if role is None or message.role == role:
-                return message
-        return None
+        if self.context_name:
+            return f"{self.context_name} - {time_str}"
+        elif self.context_type and self.context_id:
+            return f"{self.context_type.capitalize()} {self.context_id} - {time_str}"
+        else:
+            return f"Conversation - {time_str}"

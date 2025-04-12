@@ -1,33 +1,51 @@
 """
-Base interfaces for agent module integration.
+Base interfaces for agent module integration with parent applications.
 
-This module defines the abstract interfaces that must be implemented
-by applications that want to use the agent module.
+These interfaces define the contract between the agent module and
+the parent application to allow flexible integration.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional, Union, Callable
-
+from typing import Dict, Any, List, Optional, Callable, Union
 
 class SourceInterface(ABC):
     """
-    Interface for providing context sources to the agent.
+    Interface for source material access.
     
-    In ProEthica, this would be the World model.
+    This interface provides methods to access source materials like
+    guidelines, cases, etc. from the parent application.
     """
     
     @abstractmethod
-    def get_all_sources(self) -> List[Dict[str, Any]]:
+    def get_guidelines(self, context_id: str) -> str:
         """
-        Get all available sources.
+        Get guidelines text for a specific context.
         
+        Args:
+            context_id: ID of the context (e.g., world_id, persona_id)
+            
         Returns:
-            List of source objects with at least 'id' and 'name' keys
+            Guidelines text as a string
         """
-        raise NotImplementedError("Subclasses must implement get_all_sources")
+        pass
     
     @abstractmethod
-    def get_source_by_id(self, source_id: Union[int, str]) -> Optional[Dict[str, Any]]:
+    def get_relevant_sources(self, query: str, context_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Get sources relevant to a specific query and context.
+        
+        Args:
+            query: Search query to find relevant sources
+            context_id: ID of the context (e.g., world_id, persona_id)
+            limit: Maximum number of sources to return
+            
+        Returns:
+            List of source objects with content and metadata
+        """
+        pass
+    
+    @abstractmethod
+    def get_source_by_id(self, source_id: str) -> Optional[Dict[str, Any]]:
         """
         Get a specific source by ID.
         
@@ -35,20 +53,81 @@ class SourceInterface(ABC):
             source_id: ID of the source to retrieve
             
         Returns:
-            Source object or None if not found
+            Source object with content and metadata, or None if not found
         """
-        raise NotImplementedError("Subclasses must implement get_source_by_id")
-
+        pass
+    
+    @abstractmethod
+    def get_all_sources(self) -> List[Dict[str, Any]]:
+        """
+        Get all available sources.
+        
+        Returns:
+            List of source objects with metadata
+        """
+        pass
 
 class ContextProviderInterface(ABC):
     """
-    Interface for providing context to the agent.
+    Interface for context data access.
     
-    In ProEthica, this would use the ApplicationContextService.
+    This interface provides methods to access contextual data
+    from the parent application, such as user information, current state, etc.
     """
     
     @abstractmethod
-    def get_context(self, source_id: Union[int, str], query: Optional[str] = None, 
+    def get_context_name(self, context_id: str, context_type: str) -> Optional[str]:
+        """
+        Get the human-readable name for a specific context.
+        
+        Args:
+            context_id: ID of the context (e.g., world_id, persona_id)
+            context_type: Type of context (e.g., 'world', 'persona')
+            
+        Returns:
+            Human-readable name or None if not found
+        """
+        pass
+    
+    @abstractmethod
+    def get_context_data(self, context_id: str, context_type: str) -> Dict[str, Any]:
+        """
+        Get additional data about a specific context.
+        
+        Args:
+            context_id: ID of the context (e.g., world_id, persona_id)
+            context_type: Type of context (e.g., 'world', 'persona')
+            
+        Returns:
+            Dictionary with context data
+        """
+        pass
+    
+    @abstractmethod
+    def list_available_contexts(self, context_type: str) -> List[Dict[str, Any]]:
+        """
+        List all available contexts of a specific type.
+        
+        Args:
+            context_type: Type of context (e.g., 'world', 'persona')
+            
+        Returns:
+            List of context objects with id, name, and metadata
+        """
+        pass
+    
+    @abstractmethod
+    def get_user_info(self) -> Optional[Dict[str, Any]]:
+        """
+        Get information about the current user.
+        
+        Returns:
+            Dictionary with user information or None if not authenticated
+        """
+        pass
+        
+    @abstractmethod
+    def get_context(self, source_id: str, query: Optional[str] = None, 
                    additional_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Get context for a specific source and query.
@@ -61,8 +140,8 @@ class ContextProviderInterface(ABC):
         Returns:
             Dictionary containing context information
         """
-        raise NotImplementedError("Subclasses must implement get_context")
-    
+        pass
+        
     @abstractmethod
     def format_context(self, context: Dict[str, Any], max_tokens: Optional[int] = None) -> str:
         """
@@ -75,9 +154,10 @@ class ContextProviderInterface(ABC):
         Returns:
             Formatted context string
         """
-        raise NotImplementedError("Subclasses must implement format_context")
-    
-    def get_guidelines(self, source_id: Union[int, str]) -> str:
+        pass
+        
+    @abstractmethod
+    def get_guidelines(self, source_id: str) -> str:
         """
         Get guidelines for a specific source.
         
@@ -87,170 +167,126 @@ class ContextProviderInterface(ABC):
         Returns:
             Guidelines text for the source
         """
-        # Default implementation returns empty string
-        return ""
-
+        pass
 
 class LLMInterface(ABC):
     """
-    Interface for language model services.
+    Interface for language model interactions.
     
-    In ProEthica, this would be the ClaudeService or LLMService.
+    This interface provides methods to interact with language models
+    for generating responses, suggestions, etc.
     """
     
     @abstractmethod
     def send_message(self, message: str, conversation: Dict[str, Any], 
-                     context: Optional[str] = None, source_id: Optional[Union[int, str]] = None) -> Dict[str, Any]:
+                     context: Optional[str] = None, source_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Send a message to the language model.
         
         Args:
             message: User message
-            conversation: Conversation history
+            conversation: Conversation dictionary
             context: Optional context information
             source_id: Optional source ID
             
         Returns:
             Message response object
         """
-        raise NotImplementedError("Subclasses must implement send_message")
+        pass
     
     @abstractmethod
     def get_suggestions(self, conversation: Dict[str, Any], 
-                        source_id: Optional[Union[int, str]] = None) -> List[Dict[str, Any]]:
+                        source_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Get suggested prompts based on conversation history.
         
         Args:
-            conversation: Conversation history
+            conversation: Conversation dictionary
             source_id: Optional source ID
             
         Returns:
-            List of suggestion objects with 'id' and 'text' keys
+            List of suggestion objects
         """
-        raise NotImplementedError("Subclasses must implement get_suggestions")
-
+        pass
 
 class AuthInterface(ABC):
     """
-    Interface for authentication.
+    Interface for authentication and authorization.
     
-    This interface is responsible for providing authentication
-    functionality to the agent module.
+    This interface provides methods to handle user authentication
+    and authorization for protected routes.
     """
     
     @abstractmethod
     def login_required(self, func: Callable) -> Callable:
         """
-        Decorator to require login for a route.
+        Decorator to require authentication for a route.
         
         Args:
-            func: Function to decorate
+            func: Route function to protect
             
         Returns:
             Decorated function
         """
-        raise NotImplementedError("Subclasses must implement login_required")
+        pass
     
     @abstractmethod
-    def get_current_user(self):
+    def get_current_user(self) -> Optional[Any]:
         """
-        Get the current user.
+        Get the current authenticated user.
         
         Returns:
             Current user object or None if not authenticated
         """
-        raise NotImplementedError("Subclasses must implement get_current_user")
-
+        pass
+    
+    @abstractmethod
+    def is_authenticated(self) -> bool:
+        """
+        Check if the current user is authenticated.
+        
+        Returns:
+            True if authenticated, False otherwise
+        """
+        pass
 
 class SessionInterface(ABC):
     """
     Interface for session management.
     
-    This interface is responsible for storing and retrieving
-    conversation data from the session.
+    This interface provides methods to manage session state,
+    including conversation history.
     """
     
     @abstractmethod
     def get_conversation(self) -> Optional[Dict[str, Any]]:
         """
-        Get the current conversation from the session.
+        Get the current conversation from session.
         
         Returns:
-            Conversation dictionary
+            Conversation dictionary or None if not present
         """
-        raise NotImplementedError("Subclasses must implement get_conversation")
+        pass
     
     @abstractmethod
     def set_conversation(self, conversation: Dict[str, Any]) -> None:
         """
-        Store the conversation in the session.
+        Set the current conversation in session.
         
         Args:
             conversation: Conversation dictionary
         """
-        raise NotImplementedError("Subclasses must implement set_conversation")
+        pass
     
     @abstractmethod
-    def reset_conversation(self, source_id: Optional[Union[int, str]] = None) -> Dict[str, Any]:
+    def reset_conversation(self, source_id: Optional[str] = None) -> Dict[str, Any]:
         """
-        Reset the conversation.
+        Reset the current conversation.
         
         Args:
-            source_id: Optional source ID to associate with the new conversation
+            source_id: Optional source ID to initialize the conversation with
             
         Returns:
             New conversation dictionary
         """
-        raise NotImplementedError("Subclasses must implement reset_conversation")
-
-
-class AgentInterface(ABC):
-    """
-    Interface for agents that can process queries with context.
-    """
-    
-    @abstractmethod
-    def process(self, query: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Process a query with given context.
-        
-        Args:
-            query: The user's query
-            context: Context information
-            
-        Returns:
-            Processing result
-        """
-        raise NotImplementedError("Subclasses must implement process")
-
-
-class AgentChainInterface(ABC):
-    """
-    Interface for agent chains that coordinate multiple agents.
-    """
-    
-    @abstractmethod
-    def add_agent(self, name: str, agent: AgentInterface) -> None:
-        """
-        Add an agent to the chain.
-        
-        Args:
-            name: Name to identify the agent
-            agent: Agent implementation
-        """
-        raise NotImplementedError("Subclasses must implement add_agent")
-    
-    @abstractmethod
-    def process(self, query: str, initial_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        Process a query through the agent chain.
-        
-        Args:
-            query: User query
-            initial_context: Optional initial context
-            
-        Returns:
-            Processing result
-        """
-        raise NotImplementedError("Subclasses must implement process")
+        pass

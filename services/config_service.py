@@ -4,8 +4,10 @@ Configuration service for agent module adapters.
 
 import os
 import json
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional, Union, TypeVar, Generic
 
+# Generic type for default value
+T = TypeVar('T')
 
 class ConfigService:
     """
@@ -26,7 +28,7 @@ class ConfigService:
             config_override: Direct configuration override dictionary (optional)
         """
         self.config_path = config_path
-        self.config_override = config_override
+        self.config_override = config_override or {}
         
         # Load configurations
         self.default_config = self._load_default_config()
@@ -41,7 +43,10 @@ class ConfigService:
         """
         result = {
             "adapter_defaults": {},
-            "prompt_templates": {}
+            "prompt_templates": {},
+            "settings": {
+                "default_llm_service": "claude"
+            }
         }
         
         try:
@@ -105,6 +110,32 @@ class ConfigService:
                 
         return result
     
+    def get_value(self, key: str, default: T = None) -> Union[Any, T]:
+        """
+        Get a configuration value.
+        
+        Args:
+            key: Configuration key to retrieve
+            default: Default value if key is not found
+            
+        Returns:
+            Configuration value or default if not found
+        """
+        # Check direct overrides first
+        if key in self.config_override:
+            return self.config_override[key]
+        
+        # Check settings in the user config
+        if "settings" in self.user_config and key in self.user_config["settings"]:
+            return self.user_config["settings"][key]
+        
+        # Check settings in default config
+        if "settings" in self.default_config and key in self.default_config["settings"]:
+            return self.default_config["settings"][key]
+        
+        # Return default if not found
+        return default
+    
     def get_adapter_config(self, adapter_name: str) -> Dict[str, Any]:
         """
         Get configuration for a specific adapter with all overrides applied.
@@ -133,10 +164,12 @@ class ConfigService:
         
         # Apply direct overrides if they exist
         if self.config_override:
-            if "default" in self.config_override:
-                config = self._deep_merge(config, self.config_override["default"])
-            if adapter_name in self.config_override:
-                config = self._deep_merge(config, self.config_override[adapter_name])
+            if "adapter_defaults" in self.config_override:
+                override_defaults = self.config_override["adapter_defaults"]
+                if "default" in override_defaults:
+                    config = self._deep_merge(config, override_defaults["default"])
+                if adapter_name in override_defaults:
+                    config = self._deep_merge(config, override_defaults[adapter_name])
         
         return config
     

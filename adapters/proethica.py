@@ -4,82 +4,213 @@ Adapters for ProEthica's existing services.
 
 from typing import Dict, List, Any, Optional, Union
 
+from flask import current_app
+from flask_login import current_user
+
 from app.models.world import World
 from app.services.application_context_service import ApplicationContextService
 from app.services.claude_service import ClaudeService
-from app.services.llm_service import LLMService, Conversation as LegacyConversation
+from app.services.llm_service import LLMService as ProethicaLLMService
+from app.services.llm_service import Conversation as LegacyConversation
+from app.services.llm_service import Message
 
-from app.agent_module.interfaces.base import (
-    SourceInterface,
-    ContextProviderInterface,
-    LLMInterface
-)
-from app.agent_module.models.conversation import Conversation
+from app.agent_module.adapters.base import LLMServiceAdapter
+from app.agent_module.interfaces.base import SourceInterface, ContextProviderInterface
+from app.agent_module.services.config_service import ConfigService
 
 
-class WorldSourceAdapter(SourceInterface):
+class ProEthicaSourceInterface(SourceInterface):
     """
-    Adapter for ProEthica's World model.
+    ProEthica implementation of the SourceInterface.
+    Provides access to world guidelines and source materials.
     """
     
     def get_all_sources(self) -> List[Dict[str, Any]]:
         """
-        Get all available worlds.
+        Get all available sources.
         
         Returns:
-            List of world objects
+            List of source objects with metadata
         """
         worlds = World.query.all()
         return [
             {
+                'id': str(world.id),
+                'name': world.name,
+                'description': world.description,
+                'type': 'world'
+            }
+            for world in worlds
+        ]
+    
+    def get_guidelines(self, context_id: str) -> str:
+        """
+        Get guidelines for a specific world.
+        
+        Args:
+            context_id: ID of the world to get guidelines for
+            
+        Returns:
+            Guidelines text for the world
+        """
+        try:
+            world_id = int(context_id)
+            world = World.query.get(world_id)
+            if world is None:
+                return ""
+            
+            # Extract guidelines from the world
+            if hasattr(world, 'guidelines') and world.guidelines:
+                return world.guidelines
+            
+            # If no direct guidelines attribute, use the world description as a fallback
+            if world.description:
+                return f"# Guidelines for {world.name}\n\n{world.description}"
+            
+            return ""
+        except (ValueError, TypeError):
+            return ""
+    
+    def get_relevant_sources(self, query: str, context_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Get sources relevant to a specific query and world.
+        
+        Args:
+            query: Search query to find relevant sources
+            context_id: ID of the world to get sources for
+            limit: Maximum number of sources to return
+            
+        Returns:
+            List of source objects with content and metadata
+        """
+        # This would typically use a search service or similar
+        # For now, return an empty list as this requires integration with ProEthica's search
+        return []
+    
+    def get_source_by_id(self, source_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific source by ID.
+        
+        Args:
+            source_id: ID of the source to retrieve
+            
+        Returns:
+            Source object with content and metadata, or None if not found
+        """
+        try:
+            world_id = int(source_id)
+            world = World.query.get(world_id)
+            if world is None:
+                return None
+            
+            return {
                 'id': world.id,
                 'name': world.name,
                 'description': world.description,
                 'ontology_source': world.ontology_source
             }
-            for world in worlds
-        ]
-    
-    def get_source_by_id(self, source_id: Union[int, str]) -> Optional[Dict[str, Any]]:
-        """
-        Get a specific world by ID.
-        
-        Args:
-            source_id: ID of the world to retrieve
-            
-        Returns:
-            World object or None if not found
-        """
-        world = World.query.get(source_id)
-        if world is None:
+        except (ValueError, TypeError):
             return None
-            
-        return {
-            'id': world.id,
-            'name': world.name,
-            'description': world.description,
-            'ontology_source': world.ontology_source
-        }
 
 
-class ApplicationContextAdapter(ContextProviderInterface):
+class ProEthicaContextProvider(ContextProviderInterface):
     """
-    Adapter for ProEthica's ApplicationContextService.
+    ProEthica implementation of the ContextProviderInterface.
+    Provides access to contextual data from the ProEthica application.
     """
     
     def __init__(self):
-        """
-        Initialize the ApplicationContextAdapter.
-        """
+        """Initialize the ProEthicaContextProvider."""
         self.app_context_service = ApplicationContextService.get_instance()
     
-    def get_context(self, source_id: Union[int, str], query: Optional[str] = None,
-                    additional_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def get_context_name(self, context_id: str, context_type: str) -> Optional[str]:
         """
-        Get context for a specific world and query.
+        Get the human-readable name for a specific context.
         
         Args:
-            source_id: ID of the world to get context for
+            context_id: ID of the context (e.g., world_id)
+            context_type: Type of context (e.g., 'world')
+            
+        Returns:
+            Human-readable name or None if not found
+        """
+        if context_type == 'world':
+            try:
+                world_id = int(context_id)
+                world = World.query.get(world_id)
+                return world.name if world else None
+            except (ValueError, TypeError):
+                return None
+        return None
+    
+    def get_context_data(self, context_id: str, context_type: str) -> Dict[str, Any]:
+        """
+        Get additional data about a specific context.
+        
+        Args:
+            context_id: ID of the context (e.g., world_id)
+            context_type: Type of context (e.g., 'world')
+            
+        Returns:
+            Dictionary with context data
+        """
+        if context_type == 'world':
+            try:
+                world_id = int(context_id)
+                context = self.app_context_service.get_full_context(
+                    world_id=world_id,
+                    scenario_id=None,
+                    query=None
+                )
+                return context
+            except (ValueError, TypeError):
+                return {}
+        return {}
+    
+    def list_available_contexts(self, context_type: str) -> List[Dict[str, Any]]:
+        """
+        List all available contexts of a specific type.
+        
+        Args:
+            context_type: Type of context (e.g., 'world')
+            
+        Returns:
+            List of context objects with id, name, and metadata
+        """
+        if context_type == 'world':
+            worlds = World.query.all()
+            return [
+                {
+                    'id': str(world.id),
+                    'name': world.name,
+                    'description': world.description
+                }
+                for world in worlds
+            ]
+        return []
+    
+    def get_user_info(self) -> Optional[Dict[str, Any]]:
+        """
+        Get information about the current user.
+        
+        Returns:
+            Dictionary with user information or None if not authenticated
+        """
+        if current_user and current_user.is_authenticated:
+            return {
+                'id': current_user.id,
+                'username': current_user.username,
+                'email': current_user.email
+            }
+        return None
+        
+    def get_context(self, source_id: str, query: Optional[str] = None, 
+                   additional_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Get context for a specific source and query.
+        
+        Args:
+            source_id: ID of the source to get context for
             query: Optional query to focus the context
             additional_params: Optional additional parameters for the context
             
@@ -87,14 +218,17 @@ class ApplicationContextAdapter(ContextProviderInterface):
             Dictionary containing context information
         """
         params = additional_params or {}
-        context = self.app_context_service.get_full_context(
-            world_id=source_id,
-            scenario_id=params.get('scenario_id'),
-            query=query
-        )
+        try:
+            world_id = int(source_id)
+            context = self.app_context_service.get_full_context(
+                world_id=world_id,
+                scenario_id=params.get('scenario_id'),
+                query=query
+            )
+            return context
+        except (ValueError, TypeError):
+            return {}
         
-        return context
-    
     def format_context(self, context: Dict[str, Any], max_tokens: Optional[int] = None) -> str:
         """
         Format context for LLM consumption.
@@ -107,242 +241,205 @@ class ApplicationContextAdapter(ContextProviderInterface):
             Formatted context string
         """
         return self.app_context_service.format_context_for_llm(context, max_tokens)
-    
-    def get_guidelines(self, source_id: Union[int, str]) -> str:
+        
+    def get_guidelines(self, source_id: str) -> str:
         """
-        Get guidelines for a specific world.
+        Get guidelines for a specific source.
         
         Args:
-            source_id: ID of the world to get guidelines for
+            source_id: ID of the source to get guidelines for
             
         Returns:
-            Guidelines text for the world
+            Guidelines text for the source
         """
-        world = World.query.get(source_id)
-        if world is None:
-            return ""
-        
-        # Extract guidelines from the world
-        guidelines = ""
-        
-        if hasattr(world, 'guidelines') and world.guidelines:
-            guidelines = world.guidelines
-        
-        # If no direct guidelines attribute, use the world description as a fallback
-        if not guidelines and world.description:
-            guidelines = f"# Guidelines for {world.name}\n\n{world.description}"
-        
-        return guidelines
-
-
-class ClaudeServiceAdapter(LLMInterface):
-    """
-    Adapter for ProEthica's ClaudeService.
-    """
-    
-    def __init__(self, claude_service: Optional[ClaudeService] = None, api_key: Optional[str] = None, 
-                 config_service: Optional['ConfigService'] = None):
-        """
-        Initialize the ClaudeServiceAdapter.
-        
-        Args:
-            claude_service: Optional ClaudeService instance to use
-            api_key: Optional API key for Claude
-            config_service: Optional configuration service for customizing behavior
-        """
-        import os
-        
-        self.config_service = config_service
-        
-        # Use provided service or create a new one
-        if claude_service:
-            self.claude_service = claude_service
-        else:
-            # Use provided API key or get from environment
-            api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-            
-            # Get settings from config if available
-            self.settings = {}
-            if self.config_service:
-                adapter_config = self.config_service.get_adapter_config('claude')
-                if 'settings' in adapter_config:
-                    self.settings = adapter_config['settings']
-            
-            # Only pass api_key to ClaudeService since it doesn't accept max_tokens and temperature
-            self.claude_service = ClaudeService(api_key=api_key)
-    
-    def send_message(self, message: str, conversation: Dict[str, Any], 
-                     context: Optional[str] = None, source_id: Optional[Union[int, str]] = None) -> Dict[str, Any]:
-        """
-        Send a message to Claude.
-        
-        Args:
-            message: User message
-            conversation: Conversation dictionary
-            context: Optional context information
-            source_id: Optional world ID
-            
-        Returns:
-            Message response object
-        """
-        # Convert our conversation format to legacy format
-        if isinstance(conversation, Conversation):
-            conversation_dict = conversation.to_dict()
-        else:
-            conversation_dict = conversation
-            
-        legacy_conversation = LegacyConversation.from_dict(conversation_dict)
-        
-        # Send message to Claude service
-        response = self.claude_service.send_message_with_context(
-            message=message,
-            conversation=legacy_conversation,
-            application_context=context,
-            world_id=source_id or legacy_conversation.metadata.get('world_id')
-        )
-        
-        # Return response as a dictionary
-        return response.to_dict()
-    
-    def get_suggestions(self, conversation: Dict[str, Any], 
-                        source_id: Optional[Union[int, str]] = None) -> List[Dict[str, Any]]:
-        """
-        Get suggested prompts based on conversation history.
-        
-        Args:
-            conversation: Conversation dictionary 
-            source_id: Optional world ID
-            
-        Returns:
-            List of suggestion objects
-        """
-        # Convert our conversation format to legacy format if needed
-        if isinstance(conversation, Conversation):
-            conversation_dict = conversation.to_dict()
-        else:
-            conversation_dict = conversation
-            
-        legacy_conversation = LegacyConversation.from_dict(conversation_dict)
-        
-        # Get suggestions from Claude service
-        world_id = source_id or legacy_conversation.metadata.get('world_id')
-        
-        # Use the prompt options method
-        options = self.claude_service.get_prompt_options(
-            conversation=legacy_conversation,
-            world_id=world_id
-        )
-        
-        # Convert options to standard format
-        return [
-            {
-                'id': i,
-                'text': option
-            } 
-            for i, option in enumerate(options)
-        ]
-
-
-class LLMServiceAdapter(LLMInterface):
-    """
-    Adapter for ProEthica's LLMService.
-    """
-    
-    def __init__(self, llm_service: Optional[LLMService] = None, config_service: Optional['ConfigService'] = None):
-        """
-        Initialize the LLMServiceAdapter.
-        
-        Args:
-            llm_service: Optional LLMService instance to use
-            config_service: Optional configuration service for customizing behavior
-        """
-        self.config_service = config_service
-        
-        # Get settings from config if available
-        self.settings = {}
-        if self.config_service:
-            adapter_config = self.config_service.get_adapter_config('langchain')
-            if 'settings' in adapter_config:
-                self.settings = adapter_config['settings']
-        
-        # Use provided service or create a new one
-        # Note: Check if LLMService accepts these parameters first
         try:
-            self.llm_service = llm_service or LLMService(
-                max_tokens=self.settings.get('max_tokens', 800),
-                temperature=self.settings.get('temperature', 0.7)
-            )
-        except TypeError:
-            # If LLMService doesn't accept these parameters, use default constructor
-            self.llm_service = llm_service or LLMService()
+            world_id = int(source_id)
+            world = World.query.get(world_id)
+            if world is None:
+                return ""
+                
+            # Extract guidelines from the world
+            if hasattr(world, 'guidelines') and world.guidelines:
+                return world.guidelines
+            
+            # If no direct guidelines attribute, use the world description as a fallback
+            if world.description:
+                return f"# Guidelines for {world.name}\n\n{world.description}"
+                
+            return ""
+        except (ValueError, TypeError):
+            return ""
+
+
+class ProEthicaAdapter(LLMServiceAdapter):
+    """
+    Adapter for ProEthica's LLM services (Claude or LangChain).
+    Provides a unified interface to both services.
+    """
     
-    def send_message(self, message: str, conversation: Dict[str, Any], 
-                     context: Optional[str] = None, source_id: Optional[Union[int, str]] = None) -> Dict[str, Any]:
+    def __init__(self, adapter_type: str, config_service: Optional[ConfigService] = None):
         """
-        Send a message to the language model.
+        Initialize the ProEthica adapter.
         
         Args:
-            message: User message
-            conversation: Conversation dictionary
-            context: Optional context information
-            source_id: Optional world ID
+            adapter_type: Type of underlying service to use ("claude" or "langchain")
+            config_service: Service for accessing configuration values
+        """
+        self.adapter_type = adapter_type
+        self.config_service = config_service
+        self.app_context_service = ApplicationContextService.get_instance()
+        
+        # Store conversation history
+        self.conversation_history = []
+        
+        # Create the appropriate service
+        if adapter_type == "claude":
+            api_key = current_app.config.get("ANTHROPIC_API_KEY")
+            self.service = ClaudeService(api_key=api_key)
+        else:
+            self.service = ProethicaLLMService()
+    
+    def send_message(self, message: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Send a message to the LLM service and get a response.
+        
+        Args:
+            message: The message to send
+            context: Optional context information (world, session data, etc.)
             
         Returns:
-            Message response object
+            Response from the LLM service
         """
-        # Convert our conversation format to legacy format
-        if isinstance(conversation, Conversation):
-            conversation_dict = conversation.to_dict()
-        else:
-            conversation_dict = conversation
-            
-        legacy_conversation = LegacyConversation.from_dict(conversation_dict)
+        context = context or {}
         
-        # Send message to LLM service
-        response = self.llm_service.send_message_with_context(
+        # Check if this is the new combined context format
+        if 'conversation' in context:
+            conversation_dict = context.get('conversation', {})
+            # Extract the messages if available
+            if 'messages' in conversation_dict:
+                # Convert each message dict to the expected format for LegacyConversation
+                message_list = []
+                for msg in conversation_dict.get('messages', []):
+                    # Ensure each message has the required 'role' and 'content' fields
+                    if isinstance(msg, dict) and 'content' in msg:
+                        message_list.append({
+                            'role': msg.get('role', 'user'),
+                            'content': msg.get('content', '')
+                        })
+                self.conversation_history = message_list
+            
+            world_id = context.get('source_id')
+            # Get any pre-formatted context
+            formatted_context = context.get('formatted_context')
+        else:
+            # Legacy format - old behavior
+            world_id = context.get('world_id')
+            formatted_context = None
+        
+        # Convert each dictionary message to a Message object
+        message_objects = []
+        for msg in self.conversation_history:
+            if isinstance(msg, dict) and 'content' in msg:
+                message_objects.append(
+                    Message(
+                        content=msg.get('content', ''),
+                        role=msg.get('role', 'user')
+                    )
+                )
+        
+        # Create legacy conversation with Message objects
+        legacy_conversation = LegacyConversation(messages=message_objects)
+        
+        # Get formatted application context if world_id is provided
+        app_context = None
+        if world_id:
+            app_context_data = self.app_context_service.get_full_context(
+                world_id=world_id,
+                scenario_id=context.get('scenario_id'),
+                query=message
+            )
+            app_context = self.app_context_service.format_context_for_llm(app_context_data)
+        
+        # Send message to service
+        response = self.service.send_message_with_context(
             message=message,
             conversation=legacy_conversation,
-            application_context=context,
-            world_id=source_id or legacy_conversation.metadata.get('world_id')
+            application_context=app_context,
+            world_id=world_id
         )
         
-        # Return response as a dictionary
-        return response.to_dict()
+        # Update conversation history
+        self.conversation_history.append({"role": "user", "content": message})
+        self.conversation_history.append({"role": "assistant", "content": response.content})
+        
+        # Return response
+        return {
+            "role": "assistant",
+            "content": response.content
+        }
     
-    def get_suggestions(self, conversation: Dict[str, Any], 
-                        source_id: Optional[Union[int, str]] = None) -> List[Dict[str, Any]]:
+    def generate_options(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Get suggested prompts based on conversation history.
+        Generate prompt options based on the current context.
         
         Args:
-            conversation: Conversation dictionary
-            source_id: Optional world ID
+            context: Context information including world data, conversation history, etc.
             
         Returns:
-            List of suggestion objects
+            List of prompt option objects with id and text
         """
-        # Convert our conversation format to legacy format if needed
-        if isinstance(conversation, Conversation):
-            conversation_dict = conversation.to_dict()
+        # Check if this is the new combined context format
+        if 'conversation' in context:
+            conversation_dict = context.get('conversation', {})
+            # Extract the messages if available
+            if 'messages' in conversation_dict:
+                # Convert each message dict to the expected format for LegacyConversation
+                message_list = []
+                for msg in conversation_dict.get('messages', []):
+                    # Ensure each message has the required 'role' and 'content' fields
+                    if isinstance(msg, dict) and 'content' in msg:
+                        message_list.append({
+                            'role': msg.get('role', 'user'),
+                            'content': msg.get('content', '')
+                        })
+                self.conversation_history = message_list
+            world_id = context.get('source_id')
         else:
-            conversation_dict = conversation
-            
-        legacy_conversation = LegacyConversation.from_dict(conversation_dict)
+            # Legacy format - old behavior
+            world_id = context.get('world_id')
         
-        # Get suggestions from LLM service
-        world_id = source_id or legacy_conversation.metadata.get('world_id')
+        # Convert each dictionary message to a Message object
+        message_objects = []
+        for msg in self.conversation_history:
+            if isinstance(msg, dict) and 'content' in msg:
+                message_objects.append(
+                    Message(
+                        content=msg.get('content', ''),
+                        role=msg.get('role', 'user')
+                    )
+                )
         
-        # Use the prompt options method
-        options = self.llm_service.get_prompt_options(
+        # Create legacy conversation with Message objects
+        legacy_conversation = LegacyConversation(messages=message_objects)
+        
+        # Generate options
+        options = self.service.get_prompt_options(
             conversation=legacy_conversation,
             world_id=world_id
         )
         
-        # Convert options to standard format
-        return [
-            {
-                'id': i,
-                'text': option
-            } 
-            for i, option in enumerate(options)
-        ]
+        # Convert to expected format
+        return [{"id": i, "text": option} for i, option in enumerate(options)]
+    
+    def reset_conversation(self) -> None:
+        """Reset the current conversation state."""
+        self.conversation_history = []
+    
+    def get_name(self) -> str:
+        """
+        Get the name of this LLM service adapter.
+        
+        Returns:
+            Name of the adapter
+        """
+        return self.adapter_type
