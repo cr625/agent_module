@@ -140,15 +140,19 @@ class ClaudeServiceAdapter(LLMInterface):
     Adapter for ProEthica's ClaudeService.
     """
     
-    def __init__(self, claude_service: Optional[ClaudeService] = None, api_key: Optional[str] = None):
+    def __init__(self, claude_service: Optional[ClaudeService] = None, api_key: Optional[str] = None, 
+                 config_service: Optional['ConfigService'] = None):
         """
         Initialize the ClaudeServiceAdapter.
         
         Args:
             claude_service: Optional ClaudeService instance to use
             api_key: Optional API key for Claude
+            config_service: Optional configuration service for customizing behavior
         """
         import os
+        
+        self.config_service = config_service
         
         # Use provided service or create a new one
         if claude_service:
@@ -156,6 +160,15 @@ class ClaudeServiceAdapter(LLMInterface):
         else:
             # Use provided API key or get from environment
             api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+            
+            # Get settings from config if available
+            self.settings = {}
+            if self.config_service:
+                adapter_config = self.config_service.get_adapter_config('claude')
+                if 'settings' in adapter_config:
+                    self.settings = adapter_config['settings']
+            
+            # Only pass api_key to ClaudeService since it doesn't accept max_tokens and temperature
             self.claude_service = ClaudeService(api_key=api_key)
     
     def send_message(self, message: str, conversation: Dict[str, Any], 
@@ -235,15 +248,33 @@ class LLMServiceAdapter(LLMInterface):
     Adapter for ProEthica's LLMService.
     """
     
-    def __init__(self, llm_service: Optional[LLMService] = None):
+    def __init__(self, llm_service: Optional[LLMService] = None, config_service: Optional['ConfigService'] = None):
         """
         Initialize the LLMServiceAdapter.
         
         Args:
             llm_service: Optional LLMService instance to use
+            config_service: Optional configuration service for customizing behavior
         """
+        self.config_service = config_service
+        
+        # Get settings from config if available
+        self.settings = {}
+        if self.config_service:
+            adapter_config = self.config_service.get_adapter_config('langchain')
+            if 'settings' in adapter_config:
+                self.settings = adapter_config['settings']
+        
         # Use provided service or create a new one
-        self.llm_service = llm_service or LLMService()
+        # Note: Check if LLMService accepts these parameters first
+        try:
+            self.llm_service = llm_service or LLMService(
+                max_tokens=self.settings.get('max_tokens', 800),
+                temperature=self.settings.get('temperature', 0.7)
+            )
+        except TypeError:
+            # If LLMService doesn't accept these parameters, use default constructor
+            self.llm_service = llm_service or LLMService()
     
     def send_message(self, message: str, conversation: Dict[str, Any], 
                      context: Optional[str] = None, source_id: Optional[Union[int, str]] = None) -> Dict[str, Any]:

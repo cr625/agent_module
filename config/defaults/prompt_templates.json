@@ -1,0 +1,17 @@
+{
+  "default": {
+    "welcome_message": "Choose a world to generate suggestions or type your message below.",
+    "error_response": "I apologize, but I encountered an issue: {error_message}",
+    "guidelines_intro": "Here are the guidelines for {world_name}:"
+  },
+  "claude": {
+    "welcome_message": "Choose a world to generate suggestions or type your message below.",
+    "error_response": "I apologize, but I encountered an issue: {error_message}",
+    "guidelines_intro": "Here are the guidelines for {world_name}:"
+  },
+  "langchain": {
+    "welcome_message": "Choose a world to generate suggestions or type your message below.",
+    "error_response": "I apologize, but I encountered an issue: {error_message}",
+    "guidelines_intro": "Here are the guidelines for {world_name}:"
+  }
+}

@@ -24,6 +24,7 @@ def create_agent_blueprint(
     llm_interface: LLMInterface,
     auth_interface: Optional[AuthInterface] = None,
     session_interface: Optional[SessionInterface] = None,
+    config_service: Optional['ConfigService'] = None,
     require_auth: bool = True,
     url_prefix: str = '/agent',
     template_folder: Optional[str] = None,
@@ -85,10 +86,17 @@ def create_agent_blueprint(
         
         # Initialize conversation in session if not already present
         if session_mgr.get_conversation() is None:
+            # Get welcome message from config if available
+            welcome_message = "Hello! I am your assistant. Choose a world to get started."
+            if config_service:
+                welcome_message = config_service.get_prompt_template('welcome_message')
+                if not welcome_message:  # Fallback if template not found
+                    welcome_message = "Hello! I am your assistant. Choose a world to get started."
+            
             conversation = {
                 'messages': [
                     {
-                        'content': 'Hello! I am your assistant. Choose a world to get started.',
+                        'content': welcome_message,
                         'role': 'assistant',
                         'timestamp': None
                     }
@@ -97,10 +105,18 @@ def create_agent_blueprint(
             }
             session_mgr.set_conversation(conversation)
         
+        # Get welcome message from config if available
+        welcome_message = "Hello! I am your assistant. Choose a world to get started."
+        if config_service:
+            welcome_message = config_service.get_prompt_template('welcome_message')
+            if not welcome_message:  # Fallback if template not found
+                welcome_message = "Hello! I am your assistant. Choose a world to get started."
+        
         return render_template(
             'agent_window.html', 
             worlds=sources,  # Pass as 'worlds' to match template expectations
-            selected_world=selected_source  # Pass as 'selected_world' to match template expectations
+            selected_world=selected_source,  # Pass as 'selected_world' to match template expectations
+            welcome_message=welcome_message  # Pass welcome message to template
         )
     
     @agent_bp.route('/api/message', methods=['POST'])

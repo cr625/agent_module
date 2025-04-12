@@ -20,12 +20,15 @@ from app.agent_module.services.auth import (
     ConfigurableAuthProvider
 )
 from app.agent_module.services.session import FlaskSessionManager, MemorySessionManager
+from app.agent_module.services.config_service import ConfigService
 from app.agent_module.models.conversation import Conversation, Message
 from app.agent_module.blueprints.agent import create_agent_blueprint
 
 
 def create_proethica_agent_blueprint(
     config: Optional[Dict[str, Any]] = None,
+    config_path: Optional[str] = None,
+    config_override: Optional[Dict[str, Any]] = None,
     url_prefix: str = '/agent',
     template_folder: Optional[str] = None,
     static_folder: Optional[str] = None,
@@ -38,6 +41,8 @@ def create_proethica_agent_blueprint(
     
     Args:
         config: Configuration dictionary (optional)
+        config_path: Path to custom configuration file (optional)
+        config_override: Configuration overrides specific to templates and adapters (optional)
         url_prefix: URL prefix for the blueprint
         template_folder: Template folder for the blueprint
         static_folder: Static folder for the blueprint
@@ -64,16 +69,19 @@ def create_proethica_agent_blueprint(
     if config:
         cfg.update(config)
     
+    # Create configuration service
+    config_service = ConfigService(config_path=config_path, config_override=config_override)
+    
     # Create adapters
     source_interface = WorldSourceAdapter()
     context_provider = ApplicationContextAdapter()
     
     # Create LLM service
     if cfg.get('use_claude', True):
-        llm_interface = ClaudeServiceAdapter(api_key=cfg.get('api_key'))
+        llm_interface = ClaudeServiceAdapter(api_key=cfg.get('api_key'), config_service=config_service)
     else:
         from app.agent_module.adapters.proethica import LLMServiceAdapter
-        llm_interface = LLMServiceAdapter()
+        llm_interface = LLMServiceAdapter(config_service=config_service)
     
     # Create auth interface
     if cfg.get('require_auth', True):
@@ -91,6 +99,7 @@ def create_proethica_agent_blueprint(
         llm_interface=llm_interface,
         auth_interface=auth_interface,
         session_interface=session_interface,
+        config_service=config_service,
         require_auth=cfg.get('require_auth', True),
         url_prefix=url_prefix,
         template_folder=template_folder,
@@ -114,5 +123,6 @@ __all__ = [
     'DefaultAuthProvider',
     'ConfigurableAuthProvider',
     'FlaskSessionManager',
-    'MemorySessionManager'
+    'MemorySessionManager',
+    'ConfigService'
 ]
