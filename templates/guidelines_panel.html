@@ -1,0 +1,15 @@
+<!-- Guidelines panel with collapsible functionality -->
+<div class="guidelines-panel" :class="{'guidelines-panel-collapsed': isGuidelinesCollapsed}">
+    <div class="guidelines-header">
+        <h5 class="m-0">World Guidelines</h5>
+        <button class="btn btn-sm btn-outline-secondary toggle-guidelines" @click="toggleGuidelinesPanel">
+            <i class="bi" :class="isGuidelinesCollapsed ? 'bi-chevron-left' : 'bi-chevron-right'"></i>
+        </button>
+    </div>
+    <div v-if="guidelines" class="guidelines-content">
+        <div v-html="formattedGuidelines"></div>
+    </div>
+    <div v-else class="guidelines-content">
+        <p class="text-muted">Select a world to view guidelines.</p>
+    </div>
+</div>

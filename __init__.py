@@ -57,7 +57,8 @@ def create_agent_module(
         source_interface=source_interface,
         context_provider=context_provider,
         llm_interface=llm_service,
-        config_service=config_service
+        config_service=config_service,
+        template_folder=os.path.join(os.path.dirname(__file__), 'templates')  # Use absolute path to templates
     )
     
     # Create history blueprint
@@ -112,7 +113,8 @@ def create_proethica_agent_blueprint(
         context_provider=context_provider,
         llm_interface=llm_service,
         config_service=config_service,
-        url_prefix=url_prefix
+        url_prefix=url_prefix,
+        template_folder=os.path.join(os.path.dirname(__file__), 'templates')  # Use absolute path to templates
     )
 
 # For backward compatibility with the existing ProEthica application
