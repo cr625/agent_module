@@ -87,12 +87,13 @@ def create_agent_blueprint(
             selected_source = source_interface.get_source_by_id(str(source_id))
 
         # Initialize conversation in session if not already present
-        if session_mgr.get_conversation() is None:
+        conversation_dict = session_mgr.get_conversation()
+        if conversation_dict is None:
             # Get welcome message from config if available
             welcome_message = config.get_value('welcome_message', 
                                                "Hello! I am your assistant. Choose a world to get started.")
 
-            conversation = {
+            conversation_dict = {
                 'messages': [
                     {
                         'content': welcome_message,
@@ -102,7 +103,7 @@ def create_agent_blueprint(
                 ],
                 'metadata': {'source_id': source_id}
             }
-            session_mgr.set_conversation(conversation)
+            session_mgr.set_conversation(conversation_dict)
 
         # Get welcome message from config for template
         welcome_message = config.get_value('welcome_message', 
@@ -112,7 +113,8 @@ def create_agent_blueprint(
             'agent_window.html',
             worlds=sources,  # Pass as 'worlds' to match template expectations
             selected_world=selected_source,  # Pass as 'selected_world' to match template expectations
-            welcome_message=welcome_message  # Pass welcome message to template
+            welcome_message=welcome_message,  # Pass welcome message to template
+            conversation=conversation_dict  # Pass conversation to the template
         )
 
     @agent_bp.route('/api/message', methods=['POST'])
@@ -313,6 +315,104 @@ def create_agent_blueprint(
         return jsonify({
             'status': 'success',
             'message': f'Switched to {service} service'
+        })
+        
+    @agent_bp.route('/api/select-world', methods=['POST'])
+    @auth_required
+    def select_world():
+        """Select a world/source for the conversation."""
+        data = request.json
+        world_id = data.get('world_id')
+        
+        # Update conversation metadata with the selected world
+        conversation_dict = session_mgr.get_conversation()
+        conversation = Conversation.from_dict(conversation_dict) if conversation_dict else Conversation()
+        
+        if world_id is not None:
+            conversation.metadata['source_id'] = world_id
+            session_mgr.set_conversation(conversation.to_dict())
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Selected world ID: {world_id}'
+        })
+        
+    @agent_bp.route('/api/select-service', methods=['POST'])
+    @auth_required
+    def select_service():
+        """Select an LLM service for the conversation."""
+        data = request.json
+        service = data.get('service', 'claude')  # Default to claude
+        
+        # Update conversation metadata with the selected service
+        conversation_dict = session_mgr.get_conversation()
+        conversation = Conversation.from_dict(conversation_dict) if conversation_dict else Conversation()
+        
+        conversation.metadata['service'] = service
+        session_mgr.set_conversation(conversation.to_dict())
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Selected service: {service}'
+        })
+        
+    @agent_bp.route('/api/prompt-options', methods=['GET'])
+    @auth_required
+    def get_prompt_options():
+        """Get prompt options for a specific source/world."""
+        # Get world_id from query parameters
+        world_id = request.args.get('world_id', type=int)
+        
+        if not world_id:
+            return jsonify({
+                'status': 'success',
+                'options': []
+            })
+        
+        # Get conversation from session
+        conversation_dict = session_mgr.get_conversation()
+        conversation = Conversation.from_dict(conversation_dict) if conversation_dict else Conversation()
+        
+        # Get prompt options from the source interface or LLM interface
+        # For now, just return some dummy options
+        options = [
+            {'id': 1, 'text': f'Tell me about the ethical principles in this world'},
+            {'id': 2, 'text': f'What are some example scenarios in this world?'},
+            {'id': 3, 'text': f'What is the most important guideline in this world?'},
+            {'id': 4, 'text': f'How do I apply these guidelines in practice?'}
+        ]
+        
+        return jsonify({
+            'status': 'success',
+            'options': options
+        })
+        
+    @agent_bp.route('/api/suggestions', methods=['POST'])
+    @auth_required
+    def generate_suggestions():
+        """Generate conversation suggestions for a specific world."""
+        data = request.json
+        world_id = data.get('world_id')
+        service = data.get('service', 'claude')
+        
+        if not world_id:
+            return jsonify({
+                'status': 'error',
+                'message': 'World ID is required'
+            }), 400
+        
+        # Get some sample suggestions
+        suggestions = [
+            {'id': 1, 'text': f'What are the key ethical principles in this world?'},
+            {'id': 2, 'text': f'Can you provide an example of an ethical dilemma?'},
+            {'id': 3, 'text': f'How would I apply these guidelines to a real-world situation?'},
+            {'id': 4, 'text': f'What\'s the difference between this ethical framework and utilitarianism?'},
+            {'id': 5, 'text': f'How do these guidelines handle conflicts between principles?'}
+        ]
+        
+        return jsonify({
+            'status': 'success',
+            'suggestions': suggestions
         })
 
     return agent_bp
