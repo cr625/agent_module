@@ -78,8 +78,26 @@ class AProxyClaudeAdapter(LLMServiceAdapter):
         """
         context = context or {}
         
-        # Process context information
-        system_prompt = self._build_system_prompt(context)
+        # Check if a specific model was requested
+        requested_model = context.get('model')
+        if requested_model:
+            logger.info(f"Using requested model: {requested_model}")
+            # If a specific model was requested, try it first, then fallbacks
+            models_to_try = [requested_model] + [m for m in self.fallback_models if m != requested_model]
+        else:
+            # Use the default model order
+            models_to_try = [self.model] + [m for m in self.fallback_models if m != self.model]
+        
+        # Check if a custom system prompt was provided
+        custom_system_prompt = context.get('system_prompt')
+        
+        # Process context information - use custom system prompt if provided
+        if custom_system_prompt:
+            logger.info(f"Using custom system prompt: {custom_system_prompt[:50]}...")
+            system_prompt = custom_system_prompt
+        else:
+            system_prompt = self._build_system_prompt(context)
+            
         messages = self._prepare_messages(context)
         
         # Add current user message
@@ -88,8 +106,7 @@ class AProxyClaudeAdapter(LLMServiceAdapter):
         
         logger.debug(f"Sending request to Claude API with system prompt: {system_prompt[:100]}...")
         
-        # Try the primary model first, then fallbacks if needed
-        models_to_try = [self.model] + [m for m in self.fallback_models if m != self.model]
+        # models_to_try was already set above based on requested_model
         
         last_error = None
         for current_model in models_to_try:
