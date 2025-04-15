@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any, Callable
 from flask import Blueprint, render_template, request, jsonify, Response, current_app
 import logging
 
-from app.agent_module.services.conversation_storage_service import ConversationStorageService
+from agent_module.services.conversation_storage_service import ConversationStorageService
 
 logger = logging.getLogger(__name__)
 

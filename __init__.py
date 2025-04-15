@@ -6,13 +6,13 @@ import os
 from typing import Dict, Any, Optional
 from flask import Flask
 
-from app.agent_module.adapters.base import LLMServiceAdapterFactory
-from app.agent_module.blueprints.agent import create_agent_blueprint
-from app.agent_module.blueprints.history import create_history_blueprint
-from app.agent_module.interfaces.base import SourceInterface, ContextProviderInterface
-from app.agent_module.services.config_service import ConfigService
-from app.agent_module.services.database_service import DatabaseService
-from app.agent_module.services.conversation_storage_service import ConversationStorageService
+from agent_module.adapters.base import LLMServiceAdapterFactory
+from agent_module.blueprints.agent import create_agent_blueprint
+from agent_module.blueprints.history import create_history_blueprint
+from agent_module.interfaces.base import SourceInterface, ContextProviderInterface
+from agent_module.services.config_service import ConfigService
+from agent_module.services.database_service import DatabaseService
+from agent_module.services.conversation_storage_service import ConversationStorageService
 
 # Set version
 __version__ = '0.2.0'
@@ -41,11 +41,11 @@ def create_agent_module(
     
     # Create adapter factory if not provided
     if adapter_factory is None:
-        from app.agent_module.adapters.base import DefaultLLMServiceAdapterFactory
+        from agent_module.adapters.base import DefaultLLMServiceAdapterFactory
         adapter_factory = DefaultLLMServiceAdapterFactory(config_service=config_service)
     
     # Create LLM interface
-    from app.agent_module.services.llm_service import LLMService
+    from agent_module.services.llm_service import LLMService
     llm_service = LLMService(adapter_factory, config_service=config_service)
     
     # Create database service and conversation storage
@@ -89,17 +89,65 @@ def create_proethica_agent_blueprint(
     Returns:
         Flask blueprint
     """
-    from app.agent_module.adapters.proethica import ProEthicaSourceInterface, ProEthicaContextProvider
-    from app.agent_module.services.config_service import ConfigService
-    from app.agent_module.adapters.base import DefaultLLMServiceAdapterFactory
-    from app.agent_module.services.llm_service import LLMService
+    try:
+        from agent_module.adapters.a_proxy_claude import AProxyClaudeAdapter
+        from agent_module.services.config_service import ConfigService
+        from agent_module.adapters.base import DefaultLLMServiceAdapterFactory
+        from agent_module.services.llm_service import LLMService
+    except ImportError:
+        # Fall back to original imports
+        from app.agent_module.adapters.proethica import ProEthicaSourceInterface, ProEthicaContextProvider
+        from app.agent_module.services.config_service import ConfigService
+        from app.agent_module.adapters.base import DefaultLLMServiceAdapterFactory
+        from app.agent_module.services.llm_service import LLMService
+    
+    # Create interfaces - use simpler version for a_proxy
+    class SimpleSourceInterface(SourceInterface):
+        def get_all_sources(self):
+            return []
+            
+        def get_guidelines(self, context_id):
+            return ""
+            
+        def get_relevant_sources(self, query, context_id, limit=5):
+            return []
+            
+        def get_source_by_id(self, source_id):
+            return None
+    
+    class SimpleContextProvider(ContextProviderInterface):
+        def get_context_name(self, context_id, context_type):
+            return None
+            
+        def get_context_data(self, context_id, context_type):
+            return {}
+            
+        def list_available_contexts(self, context_type):
+            return []
+            
+        def get_user_info(self):
+            return None
+            
+        def get_context(self, source_id, query=None, additional_params=None):
+            return {}
+            
+        def format_context(self, context, max_tokens=None):
+            return ""
+            
+        def get_guidelines(self, source_id):
+            return ""
     
     # Create interfaces
-    source_interface = ProEthicaSourceInterface()
-    context_provider = ProEthicaContextProvider()
+    source_interface = SimpleSourceInterface()
+    context_provider = SimpleContextProvider()
     
     # Create config service with overrides
     config_service = ConfigService(config_path=None, config_override=config_override)
+    
+    # For a_proxy, add the config from the function parameters
+    if config:
+        for key, value in config.items():
+            config_service.set_value(key, value)
     
     # Create adapter factory
     adapter_factory = DefaultLLMServiceAdapterFactory(config_service=config_service)
@@ -133,9 +181,9 @@ def create_proethica_history_blueprint(
     Returns:
         Flask blueprint
     """
-    from app.agent_module.services.database_service import DatabaseService
-    from app.agent_module.services.conversation_storage_service import ConversationStorageService
-    from app.agent_module.blueprints.history import create_history_blueprint
+    from agent_module.services.database_service import DatabaseService
+    from agent_module.services.conversation_storage_service import ConversationStorageService
+    from agent_module.blueprints.history import create_history_blueprint
     
     # Create services
     db_service = DatabaseService(db_path)

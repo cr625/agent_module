@@ -6,17 +6,17 @@ from typing import Dict, Any, Optional, Callable, Union
 from flask import Blueprint, render_template, request, jsonify
 import json
 
-from app.agent_module.interfaces.base import (
+from agent_module.interfaces.base import (
     SourceInterface,
     ContextProviderInterface,
     LLMInterface,
     AuthInterface,
     SessionInterface
 )
-from app.agent_module.services.auth import FlaskLoginAuthAdapter, DefaultAuthProvider
-from app.agent_module.services.session import FlaskSessionManager
-from app.agent_module.models.conversation import Conversation, Message
-from app.agent_module.services.config_service import ConfigService
+from agent_module.services.auth import FlaskLoginAuthAdapter, DefaultAuthProvider
+from agent_module.services.session import FlaskSessionManager
+from agent_module.models.conversation import Conversation, Message
+from agent_module.services.config_service import ConfigService
 
 
 def create_agent_blueprint(

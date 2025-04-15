@@ -5,7 +5,7 @@ Base adapter interfaces and factories for LLM services.
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Type
 
-from app.agent_module.services.config_service import ConfigService
+from agent_module.services.config_service import ConfigService
 
 class LLMServiceAdapter(ABC):
     """
@@ -127,7 +127,15 @@ class DefaultLLMServiceAdapterFactory(LLMServiceAdapterFactory):
         Raises:
             ValueError: If adapter_type is not registered
         """
-        # Default to use the existing ProEthica adapter for now
+        # Try to use our custom A-Proxy Claude adapter first
+        if adapter_type == "claude" or adapter_type == "a_proxy_claude":
+            try:
+                from agent_module.adapters.a_proxy_claude import AProxyClaudeAdapter
+                return AProxyClaudeAdapter(adapter_type, self.config_service)
+            except ImportError:
+                pass  # Fall back to other adapters
+        
+        # Fall back to the existing ProEthica adapter
         try:
             from app.agent_module.adapters.proethica import ProEthicaAdapter
             return ProEthicaAdapter(adapter_type, self.config_service)
@@ -141,4 +149,4 @@ class DefaultLLMServiceAdapterFactory(LLMServiceAdapterFactory):
         Returns:
             List of adapter type names
         """
-        return ["claude", "langchain"]  # Default supported adapters
+        return ["claude", "a_proxy_claude", "langchain"]  # Default supported adapters

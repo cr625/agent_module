@@ -5,8 +5,17 @@ Service for managing and interacting with LLM service adapters.
 import logging
 from typing import List, Dict, Any, Optional
 
-from app.agent_module.adapters.base import LLMServiceAdapter, LLMServiceAdapterFactory
-from app.agent_module.services.config_service import ConfigService
+# Try to import from direct agent_module path first
+try:
+    from agent_module.adapters.base import LLMServiceAdapter, LLMServiceAdapterFactory
+    from agent_module.services.config_service import ConfigService
+except ImportError:
+    # Fall back to app.agent_module for compatibility
+    try:
+        from app.agent_module.adapters.base import LLMServiceAdapter, LLMServiceAdapterFactory
+        from app.agent_module.services.config_service import ConfigService
+    except ImportError:
+        raise ImportError("Cannot import required modules. Check your Python path configuration.")
 
 logger = logging.getLogger(__name__)
 
