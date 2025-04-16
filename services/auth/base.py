@@ -5,7 +5,7 @@ Base authentication implementations for the agent module.
 from typing import Optional, Any, Callable
 from functools import wraps
 
-from app.agent_module.interfaces.base import AuthInterface
+from agent_module.interfaces.base import AuthInterface
 
 
 class FlaskLoginAuthAdapter(AuthInterface):
