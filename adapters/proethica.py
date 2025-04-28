@@ -3,6 +3,7 @@ Adapters for ProEthica's existing services.
 """
 
 from typing import Dict, List, Any, Optional, Union
+import os
 
 from flask import current_app
 from flask_login import current_user
@@ -294,8 +295,25 @@ class ProEthicaAdapter(LLMServiceAdapter):
         
         # Create the appropriate service
         if adapter_type == "claude":
-            api_key = current_app.config.get("ANTHROPIC_API_KEY")
-            self.service = ClaudeService(api_key=api_key)
+            try:
+                # Get API key from config
+                api_key = current_app.config.get("ANTHROPIC_API_KEY")
+                
+                # Directly set the environment variable to ensure consistent environment
+                if api_key:
+                    os.environ["ANTHROPIC_API_KEY"] = api_key
+                
+                # Check if mock mode is enabled
+                use_mock = os.environ.get("USE_MOCK_FALLBACK", "").lower() == "true"
+                if use_mock:
+                    print("ProEthicaAdapter: Mock mode is enabled from environment")
+                
+                # Create the service with the API key (this is designed to fall back to mock mode if needed)
+                self.service = ClaudeService(api_key=api_key)
+                
+            except Exception as e:
+                print(f"Error initializing Claude service: {str(e)}. Initializing with no API key.")
+                self.service = ClaudeService(api_key=None)
         else:
             self.service = ProethicaLLMService()
     
